@@ -11,7 +11,6 @@ import (
 // ErrUserNotFound возвращается, когда пользователь не найден в БД.
 var ErrUserNotFound = errors.New("user not found")
 
-// TODO: этап 4 — добавить Update(ctx, *domain.User) error для обновления username/language/premium
 // TODO: этап 8 — заменить SQL-запрос на каждом сообщении на Redis-кеш (sync.Map как временный вариант)
 
 const getUserByTelegramIDSQL = `
@@ -24,6 +23,13 @@ const createUserSQL = `
 INSERT INTO users (telegram_id, first_name, last_name, username, language_code, is_premium)
 VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, created_at, updated_at
+`
+
+const updateUserSQL = `
+UPDATE users                                                                                                                                                       
+SET first_name = $1, last_name = $2, username = $3, language_code = $4, is_premium = $5                                                                            
+WHERE id = $6                                                                                                                                                      
+RETURNING updated_at
 `
 
 // UserRepo — реализация domain.UserRepository для PostgreSQL.
@@ -65,4 +71,19 @@ func (r *UserRepo) ByTelegramID(ctx context.Context, telegramID int64) (*domain.
 		return nil, err
 	}
 	return user, nil
+}
+
+// Update обновляет пользователя со всеми полями кроме telegram_id
+func (r *UserRepo) Update(ctx context.Context, user *domain.User) error {
+	row := r.db.QueryRowContext(ctx, updateUserSQL, user.FirstName, user.LastName,
+		user.Username, user.Language, user.IsPremium, user.ID,
+	)
+	err := row.Scan(&user.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+	return nil
 }
