@@ -8,6 +8,7 @@ import (
 	"github.com/beloslav13/habits-bot/internal/domain"
 )
 
+// ErrHabitNotFound возвращается, когда привычка не найдена в БД.
 var ErrHabitNotFound = errors.New("habit not found")
 
 const getHabitByUserIDSQL = `
@@ -22,14 +23,17 @@ VALUES ($1, $2, $3)
 RETURNING id, created_at, updated_at
 `
 
+// HabitRepo — реализация domain.HabitRepository для PostgreSQL.
 type HabitRepo struct {
 	db *sql.DB
 }
 
+// NewHabitRepo создаёт репозиторий привычек.
 func NewHabitRepo(db *sql.DB) *HabitRepo {
 	return &HabitRepo{db: db}
 }
 
+// Create добавляет новую привычку в БД и возвращает её ID.
 func (r *HabitRepo) Create(ctx context.Context, habit *domain.Habit) (int, error) {
 	row := r.db.QueryRowContext(ctx, createHabitSQL, habit.UserID, habit.Name, habit.Description)
 	err := row.Scan(&habit.ID, &habit.CreatedAt, &habit.UpdatedAt)
@@ -39,6 +43,8 @@ func (r *HabitRepo) Create(ctx context.Context, habit *domain.Habit) (int, error
 	return habit.ID, nil
 }
 
+// ByUserID возвращает все привычки пользователя.
+// Если привычек нет, возвращает пустой слайс (не ошибку).
 func (r *HabitRepo) ByUserID(ctx context.Context, userID int) ([]*domain.Habit, error) {
 	rows, err := r.db.QueryContext(ctx, getHabitByUserIDSQL, userID)
 	if err != nil {

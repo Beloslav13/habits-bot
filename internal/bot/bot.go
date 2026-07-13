@@ -5,26 +5,34 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/beloslav13/habits-bot/internal/storage"
 )
 
 const baseUrl = "https://api.telegram.org"
 
+// Bot управляет жизненным циклом Telegram-бота: long polling, обработка сообщений.
 type Bot struct {
 	token   string
 	baseUrl string
 	client  *http.Client
 	log     *slog.Logger
+	store   *storage.Storage
 }
 
-func New(token string, log *slog.Logger) *Bot {
+// New создаёт экземпляр бота с заданным токеном, логгером и хранилищем.
+func New(token string, log *slog.Logger, store *storage.Storage) *Bot {
 	return &Bot{
 		token:   token,
 		baseUrl: baseUrl,
 		client:  &http.Client{},
 		log:     log,
+		store:   store,
 	}
 }
 
+// Run запускает цикл long polling. Блокирует выполнение до отмены контекста.
+// Возвращает ctx.Err() при graceful shutdown или ошибку при критическом сбое.
 func (b *Bot) Run(ctx context.Context) error {
 	var offset int
 	for {

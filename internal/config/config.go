@@ -7,6 +7,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Config содержит все настройки приложения, загружаемые из переменных окружения.
 type Config struct {
 	Env      string `env:"ENV" env-default:"local"`
 	Bot      BotConfig
@@ -15,6 +16,8 @@ type Config struct {
 	RabbitMQ RabbitMQConfig
 }
 
+// MustLoad загружает конфигурацию из .env и переменных окружения.
+// Вызывает panic, если обязательные поля (например, BOT_TOKEN) не заданы.
 func MustLoad() *Config {
 	cfg := &Config{}
 	_ = godotenv.Load()
@@ -39,6 +42,7 @@ type DatabaseConfig struct {
 	SSLMode  string `env:"DB_SSLMODE"`
 }
 
+// DSN собирает строку подключения к PostgreSQL в формате URL.
 func (cfg DatabaseConfig) DSN() string {
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", cfg.User, cfg.Password, cfg.Host,
 		cfg.Port, cfg.Name, cfg.SSLMode)

@@ -28,7 +28,7 @@ func main() {
 	}
 	defer store.Close()
 
-	b := bot.New(cfg.Bot.Token, log)
+	b := bot.New(cfg.Bot.Token, log, store)
 	err = b.Run(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("bot exited with error", "error", err, "env", cfg.Env)

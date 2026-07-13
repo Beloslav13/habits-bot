@@ -5,6 +5,9 @@ import (
 	"os"
 )
 
+// New создаёт логгер в зависимости от окружения:
+//   - local/dev: текстовый формат с Debug-уровнем и source-информацией
+//   - prod/остальное: JSON-формат с Info-уровнем
 func New(env string) *slog.Logger {
 	var log *slog.Logger
 

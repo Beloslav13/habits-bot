@@ -14,6 +14,8 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
+// New открывает соединение с PostgreSQL, накатывает миграции и собирает репозитории.
+// Возвращает Storage, готовый к использованию.
 func New(dsn string) (*Storage, error) {
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
@@ -38,12 +40,15 @@ func New(dsn string) (*Storage, error) {
 	return s, nil
 }
 
+// Storage объединяет соединение с БД и репозитории.
+// Поля User и Habit реализуют соответствующие интерфейсы из domain.
 type Storage struct {
 	db    *sql.DB
 	User  domain.UserRepository
 	Habit domain.HabitRepository
 }
 
+// Close закрывает соединение с базой данных.
 func (s *Storage) Close() error {
 	return s.db.Close()
 }
