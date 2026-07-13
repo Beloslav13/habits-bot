@@ -11,7 +11,10 @@ func New(env string) *slog.Logger {
 	switch env {
 	case "local", "dev":
 		log = slog.New(
-			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
+			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+				Level:     slog.LevelDebug,
+				AddSource: true,
+			}),
 		)
 	case "prod":
 		log = slog.New(

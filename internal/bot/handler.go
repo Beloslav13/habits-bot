@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 )
 
@@ -48,22 +49,27 @@ func (b *Bot) sendMessage(chatID int, text string) error {
 
 	body, err := json.Marshal(msg)
 	if err != nil {
-		b.log.Error("failed marshalling message", "error", err)
-		return err
+		b.log.Error("sendMessage: marshal", "error", err)
+		return fmt.Errorf("sendMessage: marshal failed")
 	}
 
 	r, err := b.client.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
-		b.log.Error("failed sending message", "error", err)
-		return err
+		b.log.Error("sendMessage: network error")
+		return fmt.Errorf("sendMessage: request failed")
+	}
+	defer r.Body.Close()
+
+	if r.StatusCode != http.StatusOK {
+		b.log.Error("sendMessage: bad status", "status", r.StatusCode)
+		return fmt.Errorf("sendMessage: status %d", r.StatusCode)
 	}
 
 	_, err = io.Copy(io.Discard, r.Body)
 	if err != nil {
-		b.log.Error("failed Copy message", "error", err)
-		return err
+		b.log.Error("sendMessage: drain body", "error", err)
+		return fmt.Errorf("sendMessage: drain body failed")
 	}
-	defer r.Body.Close()
 
 	return nil
 }

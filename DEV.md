@@ -206,7 +206,7 @@ main()
 
 | Режим (ENV) | Handler | Уровень | Формат |
 |-------------|---------|---------|--------|
-| `local`, `dev` | TextHandler | Debug | `time=... level=DEBUG msg="..." key=value` |
+| `local`, `dev` | TextHandler | Debug | `time=... level=DEBUG source=bot.go:40 msg="..."` |
 | всё остальное | JSONHandler | Info | `{"time":"...","level":"INFO","msg":"..."}` |
 
 - `log.Info("starting bot", "env", cfg.Env)` → в dev: `time=... level=INFO msg="starting bot" env=local`

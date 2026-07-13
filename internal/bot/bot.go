@@ -36,7 +36,7 @@ func (b *Bot) Run(ctx context.Context) error {
 
 		upd, err := b.getUpdates(offset)
 		if err != nil {
-			b.log.Error("get updates failed", "error", err)
+			b.log.Error("get updates failed", "offset", offset, "error", err)
 			time.Sleep(time.Second)
 			continue
 		}
