@@ -4,9 +4,20 @@
 
 ```
 habits-bot/
-├── cmd/bot/main.go              # Точка входа: инициализация → запуск → graceful shutdown
+├── cmd/bot/main.go              # Точка входа: конфиг → логгер → БД → бот → graceful shutdown
 ├── internal/
 │   ├── config/config.go         # Конфигурация: чтение .env, MustLoad(), DSN
+│   ├── domain/
+│   │   ├── models.go            # Доменные модели: User, Habit
+│   │   └── repository.go        # Интерфейсы: UserRepository, HabitRepository
+│   ├── storage/
+│   │   ├── storage.go           # Подключение к БД, goose-миграции, сборка репозиториев
+│   │   ├── migrations/          # SQL-миграции (вшиваются в бинарник через embed)
+│   │   │   ├── 001_users.sql
+│   │   │   └── 002_habits.sql
+│   │   └── postgres/
+│   │       ├── user.go          # UserRepository реализация для PostgreSQL
+│   │       └── habit.go         # HabitRepository реализация для PostgreSQL
 │   └── bot/
 │       ├── bot.go               # Bot struct, New(), цикл long polling (Run)
 │       ├── telegram.go          # Типы Telegram API (Update, Message...), getUpdates()
@@ -111,7 +122,7 @@ Config {
     Bot {
         Token  "123:abc"   ← BOT_TOKEN (обязательное поле)
     }
-    Database {             ← DB_* (пока не используется)
+    Database {             ← DB_*
         Host, Port, User, Password, Name, SSLMode
     }
     Redis {                ← REDIS_* (пока не используется)
@@ -125,6 +136,69 @@ Config {
 
 - `MustLoad()`: `godotenv.Load()` (загрузка `.env`) → `cleanenv.ReadEnv()` (заполнение структур)
 - `DatabaseConfig.DSN()`: собирает строку подключения `postgres://user:pass@host:port/db?sslmode=...`
+
+---
+
+## Архитектура хранения (Repository + goose-миграции)
+
+### Слои
+
+```
+┌─────────────────────────────┐
+│  main.go / bot / handler    │  ← бизнес-логика (не знает SQL)
+├─────────────────────────────┤
+│  domain/repository.go       │  ← интерфейсы: UserRepository, HabitRepository
+├─────────────────────────────┤
+│  storage/postgres/          │  ← реализации для PostgreSQL (UserRepo, HabitRepo)
+├─────────────────────────────┤
+│  storage/storage.go         │  ← sql.Open + goose.Up + сборка в Storage{}
+└─────────────────────────────┘
+```
+
+### Domain-модели (`internal/domain/models.go`)
+
+| Модель | Таблица | Поля |
+|--------|---------|------|
+| `User` | `users` | ID, TelegramID, FirstName, LastName*, Username*, Language*, IsPremium, CreatedAt, UpdatedAt |
+| `Habit` | `habits` | ID, UserID (FK→users), Name, Description*, CreatedAt, UpdatedAt |
+
+*nullable поля → `*string` в Go (nil = NULL в БД)
+
+### Repository (паттерн)
+
+- Интерфейсы лежат в `domain/` — скрывают SQL от бизнес-логики
+- Реализации в `storage/postgres/` — конкретные SQL-запросы
+- При смене БД (MySQL, Mongo) меняется только `postgres/` → `mysql/`, бизнес-логика не трогается
+
+### Миграции (goose)
+
+Миграции лежат в `internal/storage/migrations/` и **вшиваются в бинарник** через `//go:embed`. Не нужно таскать SQL-файлы рядом с программой.
+
+```sql
+-- +goose Up     ← что выполнить при накатывании
+CREATE TABLE users (...);
+
+-- +goose Down   ← что выполнить при откате
+DROP TABLE users;
+```
+
+При старте `storage.New()` вызывает `goose.Up()` — применяет все неприменённые миграции. Таблица `goose_db_version` в БД хранит историю. Повторный запуск не ломает уже применённые миграции.
+
+### Жизненный цикл в main.go
+
+```
+main()
+  ├─ config.MustLoad()                        ← читаем .env
+  ├─ logger.New(cfg.Env)                      ← создаём логгер
+  ├─ storage.New(cfg.DataBase.DSN())          ← подключаемся к БД + миграции
+  │    ├─ sql.Open("postgres", dsn)            ← регистрируем драйвер
+  │    ├─ db.Ping()                            ← проверяем соединение
+  │    ├─ goose.Up(db, "migrations")           ← накатываем миграции
+  │    └─ Storage{User: ..., Habit: ...}       ← собираем репозитории
+  ├─ bot.New(token, log)                      ← создаём бота
+  ├─ bot.Run(ctx)                             ← запускаем long polling
+  └─ store.Close()                            ← закрываем соединение с БД (defer)
+```
 
 ---
 
@@ -182,7 +256,7 @@ Telegram присылает Update
 |------|---------------|:------:|
 | 1 | Каркас проекта, конфиг, логгер | ✅ |
 | 2 | Long polling, команды бота | ✅ |
-| 3 | PostgreSQL, миграции, модель User + Habit | ⬜ |
+| 3 | PostgreSQL, миграции, модель User + Habit | ✅ |
 | 4 | CRUD привычек через бота | ⬜ |
 | 5 | Inline-клавиатуры, callback_query | ⬜ |
 | 6 | REST API | ⬜ |
