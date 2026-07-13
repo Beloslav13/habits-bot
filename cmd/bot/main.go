@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 
@@ -20,11 +21,10 @@ func main() {
 	defer cancel()
 
 	b := bot.New(cfg.Bot.Token, log)
-	err := b.Run(ctx)
-	if err != nil {
-		log.Error("bot exited with error", "error", err.Error())
+	if err := b.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		log.Error("bot exited with error", "error", "env", cfg.Env)
 		return
 	}
 
-	log.Info("shutting down")
+	log.Info("shutting down", "env", cfg.Env)
 }
