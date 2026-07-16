@@ -1,29 +1,24 @@
 package bot
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/beloslav13/habits-bot/internal/domain"
 	"github.com/beloslav13/habits-bot/internal/storage/postgres"
 )
 
-const (
-	msgWelcome        = "Привет! Я трекер привычек. Список команд появится позже."
-	msgUnknownCmd     = "Неизвестная команда."
-	msgUseCommands    = "Используйте команды, например /start"
-	msgHabitCreate    = "Круто! Привычка создана."
-	msgHabitDelete    = "Привычку удалили!"
-	msgHabitErrCreate = "Упс, что-то пошло не так... Привычка не создана."
-	msgHabitErrDelete = "Упс, что-то пошло не так... Привычка не удалена."
-)
+// parseCommands разбирает текст сообщения на команду и аргументы.
+// Возвращает пустую строку, если сообщение не является командой.
+func parseCommands(text string) (string, []string) {
+	if !strings.HasPrefix(text, "/") {
+		return "", []string{}
+	}
+	args := strings.Fields(text)
+	cmd := strings.TrimPrefix(args[0], "/")
+	return cmd, args[1:]
+}
 
 // handleUpdate обрабатывает одно обновление от Telegram:
 // регистрирует пользователя (если новый) и маршрутизирует сообщение.
@@ -75,93 +70,22 @@ func (b *Bot) ensureUser(ctx context.Context, tgUser *User) int {
 
 // routeMessage направляет сообщение нужному обработчику в зависимости от команды.
 func (b *Bot) routeMessage(ctx context.Context, userID, chatID int, text string) {
-	if strings.HasPrefix(text, "/") {
-		textArr := strings.Fields(text)
-		cmd := textArr[0]
-		cmd = strings.TrimPrefix(cmd, "/")
-		textArr = textArr[1:]
-		switch cmd {
-		case "start":
-			b.reply(chatID, msgWelcome)
-		case "newhabit":
-			// TODO: textArr необходимо правильно адаптировать перед записью в БД (пробелы, сделать первую букву заглавной)
-			h := &domain.Habit{
-				UserID: userID,
-				Name:   strings.Join(textArr, " "),
-			}
-			id, err := b.store.Habit.Create(ctx, h)
-			if err != nil {
-				b.log.Error("routeMessage: create habit failed", "error", err, "user_id", userID, "chat_id", chatID)
-				b.reply(chatID, msgHabitErrCreate)
-				return
-			}
-			b.log.Info("routeMessage: create habit", "id", id, "user_id", userID, "chat_id", chatID)
-			b.reply(chatID, msgHabitCreate)
-		case "deletehabit":
-			idHabit, err := strconv.Atoi(textArr[0])
-			if err != nil {
-				b.log.Error("routeMessage: delete habit failed(strconv.Atoi)", "error", err, "user_id", userID, "chat_id", chatID)
-				b.reply(chatID, msgHabitErrDelete)
-				return
-			}
-			err = b.store.Habit.Delete(ctx, idHabit)
-			if err != nil {
-				b.log.Error("routeMessage: delete habit failed", "error", err, "user_id", userID, "chat_id", chatID)
-				b.reply(chatID, msgHabitErrDelete)
-				return
-			}
-			b.log.Info("routeMessage: delete habit", "id", idHabit, "user_id", userID, "chat_id", chatID)
-			b.reply(chatID, msgHabitDelete)
-
-		default:
-			b.reply(chatID, msgUnknownCmd)
-		}
-		return
-	}
-	b.reply(chatID, msgUseCommands)
-}
-
-// MessageDTO — тело запроса к Telegram API sendMessage.
-type MessageDTO struct {
-	ChatID int    `json:"chat_id"`
-	Text   string `json:"text"`
-}
-
-// sendMessage отправляет текстовое сообщение через Telegram API.
-func (b *Bot) sendMessage(chatID int, text string) error {
-	msg := MessageDTO{chatID, text}
-	url := fmt.Sprintf("%s/bot%s/sendMessage", b.baseUrl, b.token)
-
-	body, err := json.Marshal(msg)
-	if err != nil {
-		b.log.Error("sendMessage: marshal", "error", err)
-		return fmt.Errorf("sendMessage: marshal failed")
-	}
-
-	r, err := b.client.Post(url, "application/json", bytes.NewReader(body))
-	if err != nil {
-		b.log.Error("sendMessage: network error")
-		return fmt.Errorf("sendMessage: request failed")
-	}
-	defer r.Body.Close()
-
-	if r.StatusCode != http.StatusOK {
-		b.log.Error("sendMessage: bad status", "status", r.StatusCode)
-		return fmt.Errorf("sendMessage: status %d", r.StatusCode)
-	}
-
-	_, err = io.Copy(io.Discard, r.Body)
-	if err != nil {
-		b.log.Error("sendMessage: drain body", "error", err)
-		return fmt.Errorf("sendMessage: drain body failed")
-	}
-
-	return nil
-}
-
-// reply — обёртка над sendMessage с логированием ошибок.
-func (b *Bot) reply(chatID int, text string) {
-	if err := b.sendMessage(chatID, text); err != nil {
-		b.log.Error("reply failed", "chat_id", chatID, "error", err)
+	cmd, args := parseCommands(text)
+	switch cmd {
+	case "start":
+		b.reply(chatID, msgWelcome)
+		b.help(chatID)
+	case "help":
+		b.help(chatID)
+	case "habits":
+		b.habitList(ctx, userID, chatID)
+	case "newhabit":
+		b.habitCreate(ctx, userID, chatID, args)
+	case "edithabit":
+		b.habitUpdate(ctx, userID, chatID, args)
+	case "deletehabit":
+		b.habitDelete(ctx, userID, chatID, args)
+	default:
+		b.reply(chatID, msgUnknownCommand)
 	}
 }
