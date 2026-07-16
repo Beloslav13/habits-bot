@@ -21,7 +21,10 @@ habits-bot/
 │   └── bot/
 │       ├── bot.go               # Bot struct, New(), цикл long polling (Run)
 │       ├── telegram.go          # Типы Telegram API (Update, Message...), getUpdates()
-│       └── handler.go           # Роутинг команд (/start...), sendMessage(), reply()
+│       ├── handler.go           # handleUpdate, ensureUser, routeMessage, parseCommands
+│       ├── messages.go          # Все текстовые константы ответов бота
+│       ├── habits.go            # Обработчики CRUD привычек + /help
+│       └── sender.go            # sendMessage, reply, MessageDTO
 ├── pkg/logger/logger.go         # Логгер: dev (TextHandler) / prod (JSONHandler)
 ├── docker-compose.yml           # PostgreSQL 17 + Redis 7 + RabbitMQ 3
 ├── Makefile                     # make up / make down / make build
@@ -233,12 +236,21 @@ Telegram присылает Update
           │
           ▼
     handleUpdate()
-      ├─ upd.Message == nil? → return (callback, не обрабатываем пока)
-      ├─ Text == ""?         → return
-      ├─ начинается с "/"?
-      │   ├─ /start → reply(chatID, msgWelcome)
-      │   └─ другие → reply(chatID, msgUnknownCmd)
-      └─ обычный текст → reply(chatID, msgUseCommands)
+      ├─ ensureUser() — находит или создаёт пользователя в БД
+      ├─ parseCommands() — извлекает команду и аргументы
+      └─ routeMessage(userID, chatID, text)
+           ├─ /start      → приветствие + /help
+           ├─ /help       → список команд
+           ├─ /habits     → habitList: выводит список привычек
+           ├─ /newhabit N → habitCreate: создаёт привычку
+           ├─ /edithabit ID N → habitUpdate: изменяет название
+           ├─ /deletehabit ID → habitDelete: удаляет (после проверки владельца)
+           └─ остальное   → msgUnknownCommand
+
+Все CRUD-операции проверяют:
+- Валидацию названия (не пустое, ≤ 256 символов)
+- Существование привычки (ErrHabitNotFound)
+- Принадлежность пользователю (userID != h.UserID)
           │
           ▼
     reply(chatID, text)
@@ -257,7 +269,7 @@ Telegram присылает Update
 | 1 | Каркас проекта, конфиг, логгер | ✅ |
 | 2 | Long polling, команды бота | ✅ |
 | 3 | PostgreSQL, миграции, модель User + Habit | ✅ |
-| 4 | CRUD привычек через бота | ⬜ |
+| 4 | CRUD привычек через бота | ✅ |
 | 5 | Inline-клавиатуры, callback_query | ⬜ |
 | 6 | REST API | ⬜ |
 | 7 | RabbitMQ — отложенные задачи (напоминания) | ⬜ |
