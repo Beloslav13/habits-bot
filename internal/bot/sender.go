@@ -105,12 +105,41 @@ func (b *Bot) reply(chatID int, text string) int {
 	return msgID
 }
 
+// replyWithKeyboard — обёртка над sendMessage с клавиатурой.
 func (b *Bot) replyWithKeyboard(chatID int, text string, markup *InlineKeyboardMarkup) int {
 	msgID, err := b.sendMessage(chatID, text, markup)
 	if err != nil {
 		b.log.Error("replyWithKeyboard failed", "chat_id", chatID, "error", err)
 	}
 	return msgID
+}
+
+// setMyCommands регистрирует список команд, которые Telegram показывает при вводе "/".
+func (b *Bot) setMyCommands() error {
+	type botCommand struct {
+		Command     string `json:"command"`
+		Description string `json:"description"`
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"commands": []botCommand{
+			{"habits", "список привычек"},
+			{"newhabit", "создать привычку"},
+			{"help", "помощь"},
+		},
+		"scope": map[string]string{"type": "default"},
+	})
+
+	url := fmt.Sprintf("%s/bot%s/setMyCommands", b.baseUrl, b.token)
+	resp, err := b.client.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("setMyCommands: request failed")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("setMyCommands: status %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func (b *Bot) editReply(chatID, messageID int, text string) {

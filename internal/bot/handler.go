@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -34,16 +33,37 @@ func (b *Bot) handleUpdate(ctx context.Context, upd Update) {
 		return
 	}
 
+	chatID := upd.Message.Chat.ID
+	text := upd.Message.Text
 	userID := b.ensureUser(ctx, upd.Message.From)
 	if userID == 0 {
 		return
 	}
-	b.routeMessage(ctx, userID, upd.Message.Chat.ID, upd.Message.Text)
+
+	state, hasState := b.getState(userID)
+	if hasState {
+		if strings.HasPrefix(text, "/") {
+			b.clearState(userID)
+		} else {
+			b.handleState(ctx, state, userID, chatID, text)
+			return
+		}
+	}
+	b.routeMessage(ctx, userID, chatID, text)
+}
+
+func (b *Bot) handleState(ctx context.Context, state userState, userID, chatID int, text string) {
+	switch state.name {
+	case "creating_habit":
+		b.finishCreating(ctx, state, userID, chatID, text)
+	case "editing_habit":
+		b.finishEditing(ctx, state, userID, chatID, text)
+	}
 }
 
 // ensureUser проверяет существование пользователя в БД и создаёт при необходимости.
 func (b *Bot) ensureUser(ctx context.Context, tgUser *User) int {
-	user, err := b.store.User.ByTelegramID(ctx, int64(tgUser.ID))
+	user, err := b.store.User.ByTelegramID(ctx, tgUser.ID)
 	if err == nil {
 		return user.ID
 	}
@@ -53,7 +73,7 @@ func (b *Bot) ensureUser(ctx context.Context, tgUser *User) int {
 	}
 
 	u := domain.User{
-		TelegramID: int64(tgUser.ID),
+		TelegramID: tgUser.ID,
 		FirstName:  tgUser.FirstName,
 		IsPremium:  tgUser.IsPremium,
 	}
@@ -80,7 +100,7 @@ func (b *Bot) routeCallback(ctx context.Context, upd Update) {
 	entity := parts[0]                                  // habit / habits
 	action := parts[1]                                  // view / edit / delete / list / new
 	id, _ := strconv.Atoi(parts[2])
-	userID, _ := strconv.Atoi(parts[3])
+	dbUserID, _ := strconv.Atoi(parts[3])
 
 	cb := upd.CallbackQuery
 	chatID := cb.Message.Chat.ID
@@ -90,52 +110,54 @@ func (b *Bot) routeCallback(ctx context.Context, upd Update) {
 		switch action {
 		case "view":
 			// показать клавиатуру действий
-			m := habitActionKeyboard(id, userID)
+			m := habitActionKeyboard(id, dbUserID)
 			err := b.editMessage(chatID, msgID, "Что делаем?", &m)
 			if err != nil {
-				b.log.Error("routeCallback: view", "error", err, "action", action, "habit_id", id, "user_id", userID)
+				b.log.Error("routeCallback: view", "error", err, "action", action, "habit_id", id, "user_id", dbUserID)
 			}
 		case "delete":
 			// показать подтверждение
 			h, err := b.store.Habit.ByID(ctx, id)
 			if err != nil {
 				if errors.Is(err, postgres.ErrHabitNotFound) {
-					b.showHabitsList(ctx, chatID, msgID, userID) // привычка уже удалена
+					b.showHabitsList(ctx, chatID, msgID, dbUserID) // привычка уже удалена
 					return
 				}
-				b.log.Error("routeCallback: delete", "error", err, "action", action, "habit_id", id, "user_id", userID)
+				b.log.Error("routeCallback: delete", "error", err, "action", action, "habit_id", id, "user_id", dbUserID)
 				return
 			}
 
-			m := confirmDeleteKeyboard(id, userID)
+			m := confirmDeleteKeyboard(id, dbUserID)
 			err = b.editMessage(chatID, msgID, "Точно удалить «"+h.Name+"»?", &m)
 			if err != nil {
-				b.log.Error("routeCallback: delete -> editMessage", "error", err, "action", action, "habit_id", id, "user_id", userID)
+				b.log.Error("routeCallback: delete -> editMessage", "error", err, "action", action, "habit_id", id, "user_id", dbUserID)
 			}
-			b.log.Info("routeCallback: confirm delete ok", "action", action, "habit_id", id, "user_id", userID)
+			b.log.Info("routeCallback: confirm delete ok", "action", action, "habit_id", id, "user_id", dbUserID)
 		case "confirmdelete":
 			// удалить → показать список
 			err := b.store.Habit.Delete(ctx, id)
 			if err != nil {
 				if errors.Is(err, postgres.ErrHabitNotFound) {
-					b.log.Error("routeCallback: confirm_delete -> habit not found", "action", action, "habit_id", id, "user_id", userID)
+					b.log.Error("routeCallback: confirm_delete -> habit not found", "action", action, "habit_id", id, "user_id", dbUserID)
 					return
 				}
-				b.log.Error("routeCallback: confirm_delete", "error", err, "action", action, "habit_id", id, "user_id", userID)
+				b.log.Error("routeCallback: confirm_delete", "error", err, "action", action, "habit_id", id, "user_id", dbUserID)
 				return
 			}
-			b.log.Info("routeCallback: delete habit_db ok", "action", action, "habit_id", id, "user_id", userID)
-			b.showHabitsList(ctx, chatID, msgID, userID)
+			b.log.Info("routeCallback: delete habit_db ok", "action", action, "habit_id", id, "user_id", dbUserID)
+			b.showHabitsList(ctx, chatID, msgID, dbUserID)
 		case "edit":
-			b.editReply(chatID, msgID, fmt.Sprintf("Напиши /edithabit %d новое название", id))
+			b.setState("editing_habit", dbUserID, id)
+			b.editReply(chatID, msgID, "Введи новое название:")
 		case "new":
-			b.editReply(chatID, msgID, "Напиши /newhabit название")
+			b.setState("creating_habit", dbUserID, 0)
+			b.editReply(chatID, msgID, "Введи название новой привычки:")
 		}
 	case "habits":
 		switch action {
 		case "list":
 			// показать список
-			b.showHabitsList(ctx, chatID, msgID, userID)
+			b.showHabitsList(ctx, chatID, msgID, dbUserID)
 		}
 	}
 
@@ -159,7 +181,7 @@ func (b *Bot) routeMessage(ctx context.Context, userID, chatID int, text string)
 	case "deletehabit":
 		b.habitDelete(ctx, userID, chatID, args)
 	default:
-		b.reply(chatID, msgUnknownCommand)
+		b.help(chatID)
 	}
 }
 

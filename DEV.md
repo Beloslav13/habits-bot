@@ -329,6 +329,42 @@ habits_list_0_1            ← вернуться к списку привыче
 
 ---
 
+## Стейт-машина (State Machine)
+
+Используется для обработки текстового ввода без команд.
+
+### Состояния
+
+| Состояние | Триггер | Ждём от юзера | Обработчик |
+|-----------|---------|---------------|------------|
+| `idle` | по умолчанию | команды / кнопки | `routeMessage` |
+| `creating_habit` | ➕ Создать | название привычки | `finishCreating` |
+| `editing_habit` | ✏️ Изменить | новое название | `finishEditing` |
+
+### Хранение
+
+`map[int64]userState` + `sync.RWMutex` внутри `Bot`. Ключ — Telegram user ID.
+
+- `setState(userID, state)` — установить состояние
+- `getState(userID)` — получить текущее
+- `clearState(userID)` — сбросить в idle
+
+Состояние сбрасывается:
+- После успешной обработки ввода (`defer clearState`)
+- Если юзер отправил команду `/...` вместо ожидаемого ввода
+- После ошибки валидации или БД (через `defer`)
+
+### Поток в handleUpdate
+
+```
+hasState?
+  ├─ да, текст = /команда → clearState → routeMessage
+  ├─ да, текст = ввод    → handleState → finishCreating/finishEditing → clearState
+  └─ нет                 → routeMessage
+```
+
+---
+
 ## Планы по развитию (roadmap)
 
 | Этап | Что добавляем | Готово |
@@ -337,7 +373,7 @@ habits_list_0_1            ← вернуться к списку привыче
 | 2 | Long polling, команды бота | ✅ |
 | 3 | PostgreSQL, миграции, модель User + Habit | ✅ |
 | 4 | CRUD привычек через бота | ✅ |
-| 5 | Inline-клавиатуры, callback_query | 🟡 (клавиатуры ✅, стейт-машина ⬜) |
+| 5 | Inline-клавиатуры, callback_query | ✅ |
 | 6 | REST API | ⬜ |
 | 7 | RabbitMQ — отложенные задачи (напоминания) | ⬜ |
 | 8 | Redis — кеширование | ⬜ |

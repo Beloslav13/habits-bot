@@ -31,14 +31,21 @@ type InlineKeyboardMarkup struct {
 	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
 }
 
-// habitListKeyboard — список привычек (каждая кнопкой), снизу [+ Создать].
+// habitListKeyboard — список привычек (по 2 в ряд), снизу [+ Создать].
 func habitListKeyboard(habits []*domain.Habit, userID int) InlineKeyboardMarkup {
-	rows := make([][]InlineKeyboardButton, 0, len(habits)+1)
-	for _, h := range habits {
-		rows = append(rows, []InlineKeyboardButton{{
-			Text:         h.Name,
-			CallbackData: cbData(cbActionHabit, cbEntityView, h.ID, userID),
-		}})
+	var rows [][]InlineKeyboardButton
+	for i := 0; i < len(habits); i += 2 {
+		row := []InlineKeyboardButton{{
+			Text:         habits[i].Name,
+			CallbackData: cbData(cbActionHabit, cbEntityView, habits[i].ID, userID),
+		}}
+		if i+1 < len(habits) {
+			row = append(row, InlineKeyboardButton{
+				Text:         habits[i+1].Name,
+				CallbackData: cbData(cbActionHabit, cbEntityView, habits[i+1].ID, userID),
+			})
+		}
+		rows = append(rows, row)
 	}
 	rows = append(rows, []InlineKeyboardButton{{
 		Text:         "+ Создать",

@@ -2,9 +2,7 @@ package bot
 
 const (
 	// Общие
-	msgWelcome        = "Привет! Я трекер привычек. Список команд появится позже."
-	msgUnknownCommand = "Неизвестная команда."
-	msgUseCommands    = "Используйте команды, например /start"
+	msgWelcome = "Привет! Я трекер привычек. Напиши /habits чтобы начать."
 
 	// Привычки: успех
 	msgHabitCreated   = "Круто! Привычка создана."
@@ -25,4 +23,5 @@ const (
 	msgErrHabitEmptyName   = "Название привычки не может быть пустым."
 	msgErrHabitNameTooLong = "Название привычки не должно превышать 256 символов."
 	msgErrHabitEditNotArgs = "Укажите какую привычку и как ее переменовать: /edithabit 42 спорт"
+	msgEnterHabitName      = "Введи название новой привычки:"
 )

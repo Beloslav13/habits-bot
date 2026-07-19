@@ -26,7 +26,8 @@ func validateName(name string) string {
 // habitCreate создаёт новую привычку для пользователя.
 func (b *Bot) habitCreate(ctx context.Context, userID, chatID int, args []string) {
 	if len(args) == 0 {
-		b.reply(chatID, msgErrHabitNoName)
+		b.setState("creating_habit", userID, 0)
+		b.reply(chatID, msgEnterHabitName)
 		return
 	}
 	name := strings.Join(args, " ")
@@ -164,10 +165,76 @@ func (b *Bot) habitDelete(ctx context.Context, userID, chatID int, args []string
 
 func (b *Bot) help(chatID int) {
 	b.reply(chatID,
-		"Доступные команды:\n"+
-			"/habits — список привычек\n"+
+		"🤖 Habits Bot — твой трекер привычек.\n\n"+
+			"/habits — список привычек (с кнопками ✏️🗑)\n"+
 			"/newhabit название — создать\n"+
 			"/edithabit ID название — изменить\n"+
-			"/deletehabit ID — удалить",
+			"/deletehabit ID — удалить\n"+
+			"/help — эта подсказка",
 	)
+}
+
+func (b *Bot) finishCreating(ctx context.Context, state userState, userID, chatID int, text string) {
+	defer b.clearState(userID)
+
+	msgErr := validateName(text)
+	if msgErr != "" {
+		b.reply(chatID, msgErr)
+		return
+	}
+	h := &domain.Habit{
+		UserID: userID,
+		Name:   text,
+	}
+	id, err := b.store.Habit.Create(ctx, h)
+	if err != nil {
+		b.log.Error("finishCreating: create habit failed", "error", err, "user_id", userID, "chat_id", chatID)
+		b.reply(chatID, msgErrHabitNotCreated)
+		return
+	}
+	b.log.Info("finishCreating: create habit", "habit_id", id, "user_id", userID, "chat_id", chatID)
+
+	b.reply(chatID, msgHabitCreated)
+}
+
+func (b *Bot) finishEditing(ctx context.Context, state userState, userID, chatID int, text string) {
+	defer b.clearState(userID)
+
+	msgErr := validateName(text)
+	if msgErr != "" {
+		b.reply(chatID, msgErr)
+		return
+	}
+
+	habitID := state.habitID
+	h, err := b.store.Habit.ByID(ctx, habitID)
+	if err != nil {
+		if errors.Is(err, postgres.ErrHabitNotFound) {
+			b.log.Error("finishEditing: habit not found", "user_id", userID, "chat_id", chatID, "habit_id", habitID)
+			b.reply(chatID, msgErrHabitNotFound)
+			return
+		}
+		b.log.Error("finishEditing: get habit by id failed", "error", err, "user_id", userID, "chat_id", chatID, "habit_id", habitID)
+		b.reply(chatID, msgErrHabitNotUpdated)
+		return
+	}
+	if userID != h.UserID {
+		b.log.Warn("finishEditing: habit is anothers", "habit_id", h.ID, "user_id", userID)
+		b.reply(chatID, msgErrHabitNotYours)
+		return
+	}
+
+	h.Name = text
+	err = b.store.Habit.Update(ctx, h)
+	if err != nil {
+		if errors.Is(err, postgres.ErrHabitNotFound) {
+			b.log.Error("finishEditing: habit not found", "user_id", userID, "chat_id", chatID, "habit_id", habitID)
+			b.reply(chatID, msgErrHabitNotFound)
+			return
+		}
+		b.log.Error("finishEditing: update habit failed", "error", err, "user_id", userID, "chat_id", chatID, "habit_id", habitID)
+		b.reply(chatID, msgErrHabitNotUpdated)
+	}
+	b.log.Info("finishEditing: ok", "user_id", userID, "chat_id", chatID, "habit_id", habitID)
+	b.reply(chatID, msgHabitUpdated)
 }
