@@ -22,9 +22,10 @@ type Update struct {
 
 // Message — сообщение от пользователя.
 type Message struct {
-	Text string `json:"text"`
-	Chat *Chat  `json:"chat"`
-	From *User  `json:"from"`
+	MessageID int    `json:"message_id"`
+	Text      string `json:"text"`
+	Chat      *Chat  `json:"chat"`
+	From      *User  `json:"from"`
 }
 
 // Chat — информация о чате.
@@ -44,9 +45,10 @@ type User struct {
 
 // CallbackQuery — данные нажатия на inline-кнопку.
 type CallbackQuery struct {
-	ID   string `json:"id"`
-	User *User  `json:"from"`
-	Data string `json:"data"`
+	ID      string   `json:"id"`
+	User    *User    `json:"from"`
+	Message *Message `json:"message"`
+	Data    string   `json:"data"`
 }
 
 // getUpdates получает непрочитанные обновления от Telegram API (long polling).

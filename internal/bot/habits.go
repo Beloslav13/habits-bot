@@ -3,7 +3,6 @@ package bot
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -119,13 +118,8 @@ func (b *Bot) habitList(ctx context.Context, userID, chatID int) {
 		return
 	}
 
-	var sb strings.Builder
-	sb.WriteString("Твои привычки:\n")
-	for i, h := range habits {
-		fmt.Fprintf(&sb, "%d. %s\n", i+1, h.Name)
-	}
-	text := sb.String()
-	b.reply(chatID, text)
+	m := habitListKeyboard(habits, userID)
+	b.replyWithKeyboard(chatID, "Твои привычки:", &m)
 
 }
 
