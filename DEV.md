@@ -24,7 +24,8 @@ habits-bot/
 │       ├── handler.go           # handleUpdate, ensureUser, routeMessage, parseCommands
 │       ├── messages.go          # Все текстовые константы ответов бота
 │       ├── habits.go            # Обработчики CRUD привычек + /help
-│       └── sender.go            # sendMessage, reply, MessageDTO
+│       ├── keyboards.go         # Inline-клавиатуры (habitList, action, confirmDelete)
+│       └── sender.go            # sendMessage, editMessage, reply, MessageDTO
 ├── pkg/logger/logger.go         # Логгер: dev (TextHandler) / prod (JSONHandler)
 ├── docker-compose.yml           # PostgreSQL 17 + Redis 7 + RabbitMQ 3
 ├── Makefile                     # make up / make down / make build
@@ -236,6 +237,8 @@ Telegram присылает Update
           │
           ▼
     handleUpdate()
+      ├─ CallbackQuery != nil? → routeCallback() (обработка нажатий кнопок)
+      ├─ Message == nil? → return
       ├─ ensureUser() — находит или создаёт пользователя в БД
       ├─ parseCommands() — извлекает команду и аргументы
       └─ routeMessage(userID, chatID, text)
@@ -262,6 +265,70 @@ Telegram присылает Update
 
 ---
 
+## Inline-клавиатуры и Callback-и
+
+### Формат callback_data
+
+```
+entity_action_id_userID
+
+habit_view_5_1              ← выбор привычки (показать действия)
+habit_edit_5_1             ← запрос на изменение (показать подсказку)
+habit_delete_5_1           ← запрос на удаление (показать подтверждение)
+habit_confirmdelete_5_1    ← подтвердить удаление
+habit_new_0_1              ← запрос на создание (показать подсказку)
+habits_list_0_1            ← вернуться к списку привычек
+```
+
+### Как это выглядит (запрос/ответ)
+
+**Отправляем (/sendMessage):**
+```json
+{
+    "chat_id": 123,
+    "text": "Твои привычки:",
+    "reply_markup": {
+        "inline_keyboard": [
+            [{"text": "🏃 спорт", "callback_data": "habit_view_5_1"}],
+            [{"text": "📖 чтение", "callback_data": "habit_view_8_1"}],
+            [{"text": "➕ Создать", "callback_data": "habit_new_0_1"}]
+        ]
+    }
+}
+```
+
+**Telegram присылает (нажата кнопка):**
+```json
+{
+    "callback_query": {
+        "id": "abc123",
+        "from": {"id": 123, "username": "user"},
+        "message": {"message_id": 42, "chat": {"id": 123}},
+        "data": "habit_confirmdelete_5_1"
+    }
+}
+```
+
+**Редактируем сообщение (/editMessageText):**
+```json
+{
+    "chat_id": 123,
+    "message_id": 42,
+    "text": "Привычка удалена ✅",
+    "reply_markup": {"inline_keyboard": [[...]]}
+}
+```
+
+### Клавиатуры
+
+| Клавиатура | Где | Кнопки |
+|-----------|-----|--------|
+| `habitListKeyboard` | /habits, список | Привычки (по 1 в строке) + ➕ Создать |
+| `habitActionKeyboard` | Выбор привычки | ✏️ Изменить, 🗑 Удалить + ⬅️ Назад |
+| `confirmDeleteKeyboard` | Подтверждение удаления | ✅ Да, удалить + ❌ Нет |
+
+---
+
 ## Планы по развитию (roadmap)
 
 | Этап | Что добавляем | Готово |
@@ -270,7 +337,7 @@ Telegram присылает Update
 | 2 | Long polling, команды бота | ✅ |
 | 3 | PostgreSQL, миграции, модель User + Habit | ✅ |
 | 4 | CRUD привычек через бота | ✅ |
-| 5 | Inline-клавиатуры, callback_query | ⬜ |
+| 5 | Inline-клавиатуры, callback_query | 🟡 (клавиатуры ✅, стейт-машина ⬜) |
 | 6 | REST API | ⬜ |
 | 7 | RabbitMQ — отложенные задачи (напоминания) | ⬜ |
 | 8 | Redis — кеширование | ⬜ |
